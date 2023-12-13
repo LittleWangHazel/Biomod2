@@ -1,0 +1,761 @@
+#配置工作路径
+setwd("D:/Biomod ST")
+
+# 安装加载所需扩展包
+if (!require(tidyverse)) install.packages("tidyverse")
+if (!require(terra)) install.packages("terra")
+if (!require(tidyterra)) install.packages("tidyterra")
+if (!require(ggspatial)) install.packages("ggspatial")
+if (!require(remotes)) install.packages("remotes")
+if (!require(biomod2)) remotes::install_version("biomod2", version = "4.2-3-5")
+
+# 加载点位数据
+st_occ <- read.csv("D:/Biomod ST/st_occ.csv")
+head(st_occ)
+
+# 选取研究物种名称
+myRespName <- "st"
+
+# 获取存在/不存在数据
+myResp <- as.numeric(st_occ[, myRespName])
+
+# 获取经纬度数据
+myRespXY <- st_occ[, c("X_WGS84", "Y_WGS84")]
+
+# 加载环境数据
+bioclim_ZA_sub <-
+  raster::stack(
+    c(
+      bio_2 = "D:/Biomod ST/currentASC/bio2.asc",
+      bio_3 = "D:/Biomod ST/currentASC/bio3.asc",
+      bio_13 = "D:/Biomod ST/currentASC/bio13.asc",
+      bio_14 = "D:/Biomod ST/currentASC/bio14.asc",
+      bio_15 = "D:/Biomod ST/currentASC/bio15.asc",
+      bio_18 = "D:/Biomod ST/currentASC/bio18.asc",
+      elev = "D:/Biomod ST/currentASC/elev.asc",
+      Slope = "D:/Biomod ST/currentASC/slope.asc",
+      Aspect = "D:/Biomod ST/currentASC/aspect.asc"
+    )
+  )
+myExpl <- rast(bioclim_ZA_sub)
+
+# 画出环境数据（可不画）
+# ggplot() +
+#   tidyterra::geom_spatraster(data = myExpl) +
+#   facet_wrap(~lyr) +
+#   scale_fill_whitebox_c(
+#     palette = "muted",
+#     na.value = "white"
+#   )
+
+# 数据格式化（加载的点位数据要包含一个0即不存在点）
+myBiomodData<- BIOMOD_FormatingData(resp.var = myResp,
+                                    expl.var = myExpl,
+                                    resp.xy = myRespXY,                                      
+                                    resp.name = myRespName,
+                                    PA.nb.rep = 2,
+                                    PA.nb.absences = 500,
+                                    PA.strategy = 'random')
+myBiomodData
+
+# 绘制点位（存在，不存在）
+# plot(myBiomodData)
+
+# 模型参数设置
+bm_DefaultModelingOptions()
+
+# 调参与验证（下列代码开启多线程）
+# if (!grepl("mingw32", R.Version()$platform)) {
+#   library(doMC)
+#   registerDoMC(cores = cores)
+# } else {
+#   library(doParallel)
+#   cl <- makeCluster(8)
+#   registerDoParallel(cl)
+# }
+# time.seq <- system.time(
+#   bm.tuning <- BIOMOD_Tuning(bm.format = myBiomodData, ME.env = myExpl, ME.n.bg = ncell(myExpl))
+# )
+# stopCluster(cl)
+# time.seq
+
+# 参数可视化(12个可自己添加)
+# plot(bm.tuning$tune.CTA.rpart)
+# 
+# plot(bm.tuning$tune.CTA.rpart2)
+# 
+# plot(bm.tuning$tune.RF)
+# 
+# plot(bm.tuning$tune.ANN)
+# 
+# plot(bm.tuning$tune.MARS)
+# 
+# plot(bm.tuning$tune.FDA)
+# 
+# plot(bm.tuning$tune.GBM)
+# 
+# plot(bm.tuning$tune.GAM)
+
+# 使用最优参数
+
+# myBiomodOptions <- bm.tuning$models.options
+
+# 设定验证数据
+
+# 生成不同验证集
+# 
+# *biomod2*中模型验证数据集设置同样基于*caret*扩展包完成，下面展示相关函数的参数作用，有兴趣可以了解
+# 
+# 
+# library(caret)
+# trainControl(
+#   method = "boot",
+#   number = ifelse(grepl("cv", method), 10, 25),
+#   repeats = ifelse(grepl("[d_]cv$", method), 1, NA),
+#   p = 0.75,
+#   search = "grid",
+#   initialWindow = NULL,
+#   horizon = 1,
+#   fixedWindow = TRUE,
+#   skip = 0,
+#   verboseIter = FALSE,
+#   returnData = TRUE,
+#   returnResamp = "final",
+#   savePredictions = FALSE,
+#   classProbs = FALSE,
+#   summaryFunction = defaultSummary,
+#   selectionFunction = "best",
+#   preProcOptions = list(
+#     thresh = 0.95, ICAcomp = 3, k = 5, freqCut = 95 / 5, uniqueCut =
+#       10, cutoff = 0.9
+#   ),
+#   sampling = NULL,
+#   index = NULL,
+#   indexOut = NULL,
+#   indexFinal = NULL,
+#   timingSamps = 0,
+#   predictionBounds = rep(FALSE, 2),
+#   seeds = NA,
+#   adaptive = list(min = 5, alpha = 0.05, method = "gls", complete = TRUE),
+#   trim = FALSE,
+#   allowParallel = TRUE
+# )
+
+# 默认5折交叉验证，重复5次建模
+# 
+# 
+# myBiomodCV <- BIOMOD_CrossValidation(bm.format = myBiomodData)
+# head(myBiomodCV)
+
+
+# 采用不同验证策略
+# 
+# 不同抽样方法，不需要掌握，类比伪不存在点生成方式来理解即可
+# 
+# 
+# DataSplitTable.b <- BIOMOD_CrossValidation(
+#   bm.format = myBiomodData,
+#   k = 5,
+#   nb.rep = 2,
+#   do.full.models = FALSE
+# )
+# DataSplitTable.y <- BIOMOD_CrossValidation(
+#   bm.format = myBiomodData,
+#   k = 2,
+#   do.stratification = TRUE,
+#   method = "y"
+# )
+# colnames(DataSplitTable.y)[1:2] <- c("RUN11", "RUN12")
+# myBiomodCV <- cbind(DataSplitTable.b, DataSplitTable.y)
+# head(myBiomodCV)
+
+# 单个模型运行
+myBiomodOptions <- bm_DefaultModelingOptions()
+myBiomodModelOut <- BIOMOD_Modeling(
+  bm.format = myBiomodData,
+  bm.options = myBiomodOptions,
+  modeling.id = "AllModels",
+  nb.rep = 5,
+  data.split.perc = 75,
+  # data.split.table = myBiomodCV,
+  var.import = 6,
+  metric.eval = c("TSS", "ROC"),
+  # seed.val = 123,
+  nb.cpu = 2,
+  do.full.models = FALSE
+)
+myBiomodModelOut
+
+# 影响因素分析
+
+# 模型评估,得到相关指标数据
+
+get_evaluations(myBiomodModelOut)
+
+# 保存模型评估结果
+
+try(write.csv(
+  x = get_evaluations(myBiomodModelOut),
+  file = paste0(myRespName, "/", myRespName, "_models_evaluations.csv")
+))
+
+# 变量重要性
+get_variables_importance(myBiomodModelOut) %>%
+  # head(30)
+  
+  # 保存变量重要性
+  
+  try(write.csv(
+    x = get_variables_importance(myBiomodModelOut),
+    file = paste0(myRespName, "/", myRespName, "_variables_importance.csv")
+  ))
+
+# 不同模型的TSS/ROC等指标散点图
+bm_PlotEvalMean(bm.out = myBiomodModelOut)
+
+# 保存模型评分
+
+try(score1 <- bm_PlotEvalMean(bm.out = myBiomodModelOut))
+try(write.csv(
+  x = score1$tab,
+  file = paste0(myRespName, "/", myRespName, "_score_tab.csv")
+))
+try(score1$plot)
+try(ggsave(paste0(myRespName, "/", myRespName, "_score_plot.pdf")))
+
+# 不同模型的TSS/ROC等指标箱线图
+bm_PlotEvalBoxplot(bm.out = myBiomodModelOut, group.by = c("algo", "algo"))
+
+# 保存不同模型的TSS/ROC等指标箱线图
+try(metric1 <- bm_PlotEvalBoxplot(bm.out = myBiomodModelOut, group.by = c("algo", "algo")))
+try(write.csv(
+  x = metric1$tab,
+  file = paste0(myRespName, "/", myRespName, "_metric_tab.csv")
+))
+try(metric1$plot)
+try(ggsave(paste0(myRespName, "/", myRespName, "_metric_plot.pdf")))
+# 不同轮次RUN、不同模型的TSS/ROC等指标箱线图
+bm_PlotEvalBoxplot(bm.out = myBiomodModelOut, group.by = c("algo", "run"))
+
+# 保存不同轮次RUN、不同模型的TSS/ROC等指标箱线图
+
+try(metric2 <- bm_PlotEvalBoxplot(bm.out = myBiomodModelOut, group.by = c("algo", "run")))
+try(write.csv(
+  x = metric2$tab,
+  file = paste0(myRespName, "/", myRespName, "_metric_run_tab.csv")
+))
+try(metric2$plot)
+try(ggsave(metric2$plot, paste0(myRespName, "/", myRespName, "_metric_run_plot.pdf")))
+
+# 不同模型、不同变量的重要性箱线图
+bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c("expl.var", "algo", "algo"))
+# 写出不同模型、不同变量的重要性箱线图
+try(varimp1 <- bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c("expl.var", "algo", "algo")))
+try(write.csv(
+  x = varimp1$tab,
+  file = paste0(myRespName, "/", myRespName, "_varimp_model_tab.csv")
+))
+try(varimp1$plot)
+try(ggsave(varimp1$plot, paste0(myRespName, "/", myRespName, "_varimp_model_plot.pdf")))
+# 图
+bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c("expl.var", "algo", "run"))
+# 写出
+try(varimp2 <- bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c("algo", "expl.var", "run")))
+try(write.csv(
+  x = varimp2$tab,
+  file = paste0(myRespName, "/", myRespName, "_varimp_run_tab.csv")
+))
+try(varimp2$plot)
+try(ggsave(varimp2$plot, paste0(myRespName, "/", myRespName, "_varimp_run_plot.pdf")))
+
+# 图
+bm_PlotVarImpBoxplot(bm.out = myBiomodModelOut, group.by = c("algo", "expl.var", "run"))
+
+# 响应曲线
+# 控制变量法，其中其他变量可以设置于中位数最小值等统计指标处
+
+rc_res <- bm_PlotResponseCurves(
+  bm.out = myBiomodModelOut,
+  models.chosen = get_built_models(myBiomodModelOut)[c(1:3, 12:14)],
+  fixed.var = "median"
+)
+rc_res$tab %>% head(30)
+
+# 绘制*GLM*的95%置信区间
+
+
+# library(confintr)
+# resp_models <- bm_PlotResponseCurves(
+#   bm.out = myBiomodModelOut,
+#   models.chosen = get_built_models(myBiomodModelOut)[c(1)],
+#   fixed.var = "median"
+# )
+# pp <- resp_models$plot
+# pp +
+#   geom_smooth(color = "blue", fill = "grey30", se = TRUE, method = "gam")
+# # 响应曲线
+# try(rc1 <- bm_PlotResponseCurves(
+#   bm.out = myBiomodModelOut,
+#   models.chosen = get_built_models(myBiomodModelOut),
+#   fixed.var = "median"
+# ))
+# try(write.csv(
+#   x = rc1$tab,
+#   file = paste0(myRespName, "/", myRespName, "_ResponseCurves_median_tab.csv")
+# ))
+# try(rc1$plot)
+# try(ggsave(paste0(myRespName, "/", myRespName, "_ResponseCurves_median_plot.pdf")))
+# # min
+# rc_res <- bm_PlotResponseCurves(
+#   bm.out = myBiomodModelOut,
+#   models.chosen = get_built_models(myBiomodModelOut)[c(1:3, 12:14)],
+#   fixed.var = "min"
+# )
+# rc_res$tab %>% head(30)
+# 
+# rc_res$plot
+# # 写出min的曲线
+# try(rc2 <- bm_PlotResponseCurves(
+#   bm.out = myBiomodModelOut,
+#   models.chosen = get_built_models(myBiomodModelOut),
+#   fixed.var = "min"
+# ))
+# try(write.csv(
+#   x = rc2$tab,
+#   file = paste0(myRespName, "/", myRespName, "_ResponseCurves_min_tab.csv")
+# ))
+# try(rc2$plot)
+# try(ggsave(paste0(myRespName, "/", myRespName, "_ResponseCurves_min_plot.pdf")))
+# 
+# # median
+# rc_res <- bm_PlotResponseCurves(
+#   bm.out = myBiomodModelOut,
+#   models.chosen = get_built_models(myBiomodModelOut)[3],
+#   fixed.var = "median",
+#   do.bivariate = TRUE
+# )
+# rc_res$tab %>% head(60)
+
+# 模型集成
+myBiomodEM <- BIOMOD_EnsembleModeling(
+  bm.mod = myBiomodModelOut,
+  models.chosen = "all",
+  em.by = "all",
+  metric.select = c("TSS"),
+  metric.select.thresh = c(0.8),
+  var.import = 6,
+  metric.eval = c("TSS", "ROC"),
+  em.algo = c("EMmean", "EMcv", "EMci", "EMmedian", "EMca", "EMwmean"),
+  EMci.alpha = 0.05,
+  EMwmean.decay = "proportional"
+)
+myBiomodEM
+
+
+# 写
+# 集成模型指标
+try(metric_em <- get_evaluations(myBiomodEM))
+try(write.csv(
+  x = metric_em,
+  file = paste0(myRespName, "/", myRespName, "_metric_em_tab.csv")
+))
+# 集成模型变量重要性
+try(varimp_em <- get_variables_importance(myBiomodEM))
+try(write.csv(
+  x = varimp_em,
+  file = paste0(myRespName, "/", myRespName, "_varimp_em_tab.csv")
+))
+# 集成模型指标图
+try(metric_em <- bm_PlotEvalMean(bm.out = myBiomodEM, group.by = "full.name"))
+try(write.csv(
+  x = metric_em$tab,
+  file = paste0(myRespName, "/", myRespName, "_metric_em_tab2.csv")
+))
+try(metric_em$plot)
+try(ggsave(paste0(myRespName, "/", myRespName, "_metric_em_plot.pdf")))
+
+# 集成模型不同指标
+try(metric_em_full_full <- bm_PlotEvalBoxplot(bm.out = myBiomodEM, group.by = c("full.name", "full.name")))
+try(write.csv(
+  x = metric_em_full_full$tab,
+  file = paste0(myRespName, "/", myRespName, "_metric_em_full_full_tab.csv")
+))
+try(metric_em_full_full$plot)
+try(ggsave(paste0(myRespName, "/", myRespName, "_metric_em_full_full_plot.pdf")))
+# 模型评估
+
+get_evaluations(myBiomodEM)
+
+get_variables_importance(myBiomodEM)
+
+bm_PlotEvalMean(bm.out = myBiomodEM, group.by = "full.name")
+
+bm_PlotEvalBoxplot(bm.out = myBiomodEM, group.by = c("full.name", "full.name"))
+
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c("expl.var", "full.name", "full.name"))
+
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c("expl.var", "algo", "merged.by.run"))
+
+bm_PlotVarImpBoxplot(bm.out = myBiomodEM, group.by = c("algo", "expl.var", "merged.by.run"))
+
+rc_res <- bm_PlotResponseCurves(
+  bm.out = myBiomodEM,
+  models.chosen = get_built_models(myBiomodEM)[c(1, 6, 7)],
+  fixed.var = "median"
+)
+rc_res$tab %>% head(30)
+
+rc_res$plot
+# 
+# 
+# # 采用最小值计算响应曲线数值
+# 
+# 
+# rc_res <- bm_PlotResponseCurves(
+#   bm.out = myBiomodEM,
+#   models.chosen = get_built_models(myBiomodEM)[c(1, 6, 7)],
+#   fixed.var = "min"
+# )
+# rc_res$tab %>% head(30)
+# 
+# rc_res$plot
+# 
+# rc_res <- bm_PlotResponseCurves(
+#   bm.out = myBiomodEM,
+#   models.chosen = get_built_models(myBiomodEM)[7],
+#   fixed.var = "median",
+#   do.bivariate = TRUE
+# )
+# rc_res$tab %>% head(30)
+# 
+# rc_res$plot
+
+
+# -单个模型拟合
+
+myBiomodProj <- BIOMOD_Projection(
+  bm.mod = myBiomodModelOut,
+  proj.name = "Current",
+  new.env = myExpl,
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  build.clamping.mask = TRUE,
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodProj
+
+
+
+file.out <- paste0(myRespName, "/", myRespName, ".AllModels.models.out")
+myBiomodModelOut <- get(load(file.out))
+BIOMOD_LoadModels(bm.out = myBiomodModelOut, algo = "RF")
+
+
+
+拟合结果
+plot(myBiomodProj)
+
+
+# 集成EM
+myBiomodEMProj <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  bm.proj = myBiomodProj,
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+
+myBiomodEMProj <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  proj.name = "CurrentEM",
+  new.env = myExpl,
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodEMProj
+
+
+
+# 加载未来
+bioclim_50126<-
+  raster::stack(
+    c(
+      bio_2 = "D:/Biomod ST/50126asc/bio2.asc",
+      bio_3 = "D:/Biomod ST/50126asc/bio3.asc",
+      bio_13 = "D:/Biomod ST/50126asc/bio13.asc",
+      bio_14 = "D:/Biomod ST/50126asc/bio14.asc",
+      bio_15 = "D:/Biomod ST/50126asc/bio15.asc",
+      bio_18 = "D:/Biomod ST/50126asc/bio18.asc",
+      elev = "D:/Biomod ST/50126asc/elev.asc",
+      Slope = "D:/Biomod ST/50126asc/slope.asc",
+      Aspect = "D:/Biomod ST/50126asc/aspect.asc"
+    )
+  )
+
+myExplFuture <- rast(bioclim_50126)
+
+myBiomodProjectionFuture <- BIOMOD_Projection(
+  bm.mod = myBiomodModelOut,
+  proj.name = "50126",
+  new.env = myExplFuture,
+  models.chosen = "all",
+  metric.binary = "TSS",
+  build.clamping.mask = TRUE,
+  output.format = ".img"
+)
+myBiomodProjectionFuture
+
+myBiomodEMProjFuture <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  bm.proj = myBiomodProjectionFuture,
+  proj.name = "Future",
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodEMProjFuture
+
+
+
+
+bioclim_50585<-
+  raster::stack(
+    c(
+      bio_2 = "D:/Biomod ST/50585asc/bio2.asc",
+      bio_3 = "D:/Biomod ST/50585asc/bio3.asc",
+      bio_13 = "D:/Biomod ST/50585asc/bio13.asc",
+      bio_14 = "D:/Biomod ST/50585asc/bio14.asc",
+      bio_15 = "D:/Biomod ST/50585asc/bio15.asc",
+      bio_18 = "D:/Biomod ST/50585asc/bio18.asc",
+      elev = "D:/Biomod ST/50585asc/elev.asc",
+      Slope = "D:/Biomod ST/50585asc/slope.asc",
+      Aspect = "D:/Biomod ST/50585asc/aspect.asc"
+    )
+  )
+
+myExpl50585 <- rast(bioclim_50585)
+
+myBiomodProjection50585 <- BIOMOD_Projection(
+  bm.mod = myBiomodModelOut,
+  proj.name = "50126",
+  new.env = myExpl50585,
+  models.chosen = "all",
+  metric.binary = "TSS",
+  build.clamping.mask = TRUE,
+  output.format = ".img"
+)
+myBiomodProjection50585
+
+myBiomodEMProj50585 <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  bm.proj = myBiomodProjection50585,
+  proj.name = "50585",
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodEMProj50585
+
+
+bioclim_70126<-
+  raster::stack(
+    c(
+      bio_2 = "D:/Biomod ST/70126asc/bio2.asc",
+      bio_3 = "D:/Biomod ST/70126asc/bio3.asc",
+      bio_13 = "D:/Biomod ST/70126asc/bio13.asc",
+      bio_14 = "D:/Biomod ST/70126asc/bio14.asc",
+      bio_15 = "D:/Biomod ST/70126asc/bio15.asc",
+      bio_18 = "D:/Biomod ST/70126asc/bio18.asc",
+      elev = "D:/Biomod ST/70126asc/elev.asc",
+      Slope = "D:/Biomod ST/70126asc/slope.asc",
+      Aspect = "D:/Biomod ST/70126asc/aspect.asc"
+    )
+  )
+
+myExpl70126 <- rast(bioclim_70126)
+
+myBiomodProjection70126 <- BIOMOD_Projection(
+  bm.mod = myBiomodModelOut,
+  proj.name = "50126",
+  new.env = myExpl70126,
+  models.chosen = "all",
+  metric.binary = "TSS",
+  build.clamping.mask = TRUE,
+  output.format = ".img"
+)
+myBiomodProjection70126
+
+myBiomodEMProj70126 <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  bm.proj = myBiomodProjection70126,
+  proj.name = "70126",
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodEMProj70126
+
+
+bioclim_70585<-
+  raster::stack(
+    c(
+      bio_2 = "D:/Biomod ST/70585asc/bio2.asc",
+      bio_3 = "D:/Biomod ST/70585asc/bio3.asc",
+      bio_13 = "D:/Biomod ST/70585asc/bio13.asc",
+      bio_14 = "D:/Biomod ST/70585asc/bio14.asc",
+      bio_15 = "D:/Biomod ST/70585asc/bio15.asc",
+      bio_18 = "D:/Biomod ST/70585asc/bio18.asc",
+      elev = "D:/Biomod ST/70585asc/elev.asc",
+      Slope = "D:/Biomod ST/70585asc/slope.asc",
+      Aspect = "D:/Biomod ST/70585asc/aspect.asc"
+    )
+  )
+
+myExpl70585 <- rast(bioclim_70585)
+
+myBiomodProjection70585 <- BIOMOD_Projection(
+  bm.mod = myBiomodModelOut,
+  proj.name = "50585",
+  new.env = myExpl70585,
+  models.chosen = "all",
+  metric.binary = "TSS",
+  build.clamping.mask = TRUE,
+  output.format = ".img"
+)
+myBiomodProjection70585
+
+myBiomodEMProj70585 <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  bm.proj = myBiomodProjection70585,
+  proj.name = "70585",
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodEMProj70585
+
+
+bioclim_90126<-
+  raster::stack(
+    c(
+      bio_2 = "D:/Biomod ST/90126asc/bio2.asc",
+      bio_3 = "D:/Biomod ST/90126asc/bio3.asc",
+      bio_13 = "D:/Biomod ST/90126asc/bio13.asc",
+      bio_14 = "D:/Biomod ST/90126asc/bio14.asc",
+      bio_15 = "D:/Biomod ST/90126asc/bio15.asc",
+      bio_18 = "D:/Biomod ST/90126asc/bio18.asc",
+      elev = "D:/Biomod ST/90126asc/elev.asc",
+      Slope = "D:/Biomod ST/90126asc/slope.asc",
+      Aspect = "D:/Biomod ST/90126asc/aspect.asc"
+    )
+  )
+
+myExpl90126 <- rast(bioclim_90126)
+
+myBiomodProjection90126 <- BIOMOD_Projection(
+  bm.mod = myBiomodModelOut,
+  proj.name = "50585",
+  new.env = myExpl90126,
+  models.chosen = "all",
+  metric.binary = "TSS",
+  build.clamping.mask = TRUE,
+  output.format = ".img"
+)
+myBiomodProjection90126
+
+myBiomodEMProj90126 <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  bm.proj = myBiomodProjection90126,
+  proj.name = "90126",
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodEMProj90126
+
+
+
+
+bioclim_90585<-
+  raster::stack(
+    c(
+      bio_2 = "D:/Biomod ST/90585asc/bio2.asc",
+      bio_3 = "D:/Biomod ST/90585asc/bio3.asc",
+      bio_13 = "D:/Biomod ST/90585asc/bio13.asc",
+      bio_14 = "D:/Biomod ST/90585asc/bio14.asc",
+      bio_15 = "D:/Biomod ST/90585asc/bio15.asc",
+      bio_18 = "D:/Biomod ST/90585asc/bio18.asc",
+      elev = "D:/Biomod ST/90585asc/elev.asc",
+      Slope = "D:/Biomod ST/90585asc/slope.asc",
+      Aspect = "D:/Biomod ST/90585asc/aspect.asc"
+    )
+  )
+
+myExpl90585 <- rast(bioclim_90585)
+
+myBiomodProjection90585 <- BIOMOD_Projection(
+  bm.mod = myBiomodModelOut,
+  proj.name = "50585",
+  new.env = myExpl90585,
+  models.chosen = "all",
+  metric.binary = "TSS",
+  build.clamping.mask = TRUE,
+  output.format = ".img"
+)
+myBiomodProjection90585
+
+myBiomodEMProj90585 <- BIOMOD_EnsembleForecasting(
+  bm.em = myBiomodEM,
+  bm.proj = myBiomodProjection90585,
+  proj.name = "90585",
+  models.chosen = "all",
+  metric.binary = "all",
+  metric.filter = "all",
+  output.format = ".img",
+  do.stack = FALSE
+)
+myBiomodEMProj90585
+
+
+# 加载当前和未来 来看面积变化
+# CurrentProj <- get_predictions(myBiomodProj, metric.binary = "TSS")
+# FutureProj <- get_predictions(myBiomodProjectionFuture, metric.binary = "TSS")
+# 
+# myBiomodRangeSize <- BIOMOD_RangeSize(
+#   proj.current = CurrentProj,
+#   proj.future = FutureProj
+# )
+# myBiomodRangeSize$Compt.By.Models
+# 
+# myBiomodRangeSize$Compt.By.Models %>% 
+#   as.data.frame.array() %>% 
+#   rownames_to_column("type") %>% 
+#   flextable::regulartable()
+
+# 画出面积变化百分比的图
+# gg <- bm_PlotRangeSize(
+#   bm.range = myBiomodRangeSize,
+#   do.count = TRUE,
+#   do.perc = TRUE,
+#   do.maps = TRUE,
+#   do.mean = TRUE,
+#   do.plot = TRUE,
+#   row.names = c("Species", "Dataset", "Run", "Algo")
+# )
